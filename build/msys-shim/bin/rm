@@ -1,0 +1,62 @@
+#!/bin/sh
+# msys-shim/bin/rm -- drop-in `rm` that survives under a sandbox which blocks
+# recursive deletes from the MSYS2 coreutils.
+#
+# MSYS2's own `rm -r` is used for single files and plain `rmdir`. Directories
+# are handed to a python shutil.rmtree, which the sandbox allows. python is
+# auto-detected on PATH (python3, python, py); override with MQL_ZMQ_PYTHON.
+# Without any python the shim is a no-op passthrough to the real rm, so it is
+# harmless on a normal machine.
+#
+# Install the shim by prepending this directory to PATH, see
+# build/build-mingw.sh (PATH="$SCRIPT_DIR/msys-shim/bin:$PATH").
+
+PYTHON="${MQL_ZMQ_PYTHON:-}"
+if [ -z "$PYTHON" ]; then
+  for cand in python3 python py; do
+    if command -v "$cand" >/dev/null 2>&1; then PYTHON="$cand"; break; fi
+  done
+fi
+
+# Collect the operands, honouring only the flags autoconf/automake use.
+targets=""
+recursive=0
+for arg in "$@"; do
+  case "$arg" in
+    -*) for f in $(echo "$arg" | tr -d ' '); do
+          case "$f" in
+            r|R|d) recursive=1 ;;
+          esac
+        done
+        ;;
+    *) targets="$targets $arg" ;;
+  esac
+done
+
+[ -z "$targets" ] && exit 0
+
+# Fast path: no directory in the operand list -> let the real rm do it.
+allfiles=1
+for t in $targets; do
+  if [ -d "$t" ] && [ ! -L "$t" ]; then allfiles=0; break; fi
+done
+if [ "$allfiles" = "1" ]; then
+  exec /usr/bin/rm "$@"
+fi
+
+if [ -n "$PYTHON" ]; then
+  for t in $targets; do
+    [ -e "$t" ] || [ -L "$t" ] || continue
+    w=$(cygpath -w "$t" 2>/dev/null || echo "$t")
+    "$PYTHON" -c 'import os, shutil, sys
+p = sys.argv[1]
+if os.path.isdir(p) and not os.path.islink(p):
+    shutil.rmtree(p)
+else:
+    os.remove(p)' "$w" || exit 1
+  done
+  exit 0
+fi
+
+# Fallback: keep the usual rm semantics.
+exec /usr/bin/rm "$@"

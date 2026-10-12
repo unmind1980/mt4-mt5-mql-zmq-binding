@@ -1,0 +1,20 @@
+# MQL sources: keep CRLF in the working tree (MetaEditor writes CRLF),
+# store LF in the repository.
+*.mqh text eol=crlf
+*.mq4 text eol=crlf
+*.mq5 text eol=crlf
+
+# Docs and scripts
+*.md   text eol=lf
+*.sh   text eol=lf
+*.yml  text eol=lf
+
+# Binaries
+*.dll  binary
+*.exe  binary
+*.zip  binary
+
+# Never commit the build tree
+build/dl/    export-ignore
+build/work/  export-ignore
+build/dist/  export-ignore
